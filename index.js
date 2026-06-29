@@ -58,7 +58,6 @@ client.on('messageCreate', async (message) => {
 });
 
 client.login(process.env.DISCORD_TOKEN);
-// --- THE MISSING VERIFY ROUTE ---
 app.post('/verify', async (req, res) => {
   console.log("📨 Incoming verification payload received:", req.body);
 
@@ -71,7 +70,6 @@ app.post('/verify', async (req, res) => {
     return res.status(400).json({ error: "Missing userId or accountId" });
   }
 
-  // Early activity log check
   if (hasNft === false) {
     console.log(`📡 Log Ping: User ${userId} is currently checking wallet ${accountId}`);
     return res.json({ status: "logged" });
@@ -88,11 +86,13 @@ app.post('/verify', async (req, res) => {
     
     console.log(`👤 Target User Tag: ${member.user.tag}`);
     console.log(`👑 Is User Server Owner?: ${guild.ownerId === member.id}`);
-    console.log(`🛡️ Bot Highest Role Position: ${guild.members.me.roles.highest.position}`);
-    console.log(`🏷️ Target Role Position: ${guild.roles.cache.get(roleId)?.position}`);
 
     await member.roles.add(roleId);
 
     console.log(`✅ Success! Role assigned to Discord User: ${userId}`);
     return res.json({ success: true });
+  } catch (error) {
+    console.error("❌ Discord Role Assignment failed:", error);
+    return res.status(500).json({ error: error.message });
   }
+});
