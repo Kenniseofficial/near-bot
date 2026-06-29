@@ -1,7 +1,5 @@
 const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 const express = require('express');
-require('dotenv').config();
-const express = require('express');
 const cors = require('cors'); // Make sure this is imported at the top
 const app = express();
 
@@ -13,7 +11,6 @@ app.use(cors({
 }));
 
 app.use(express.json());
-const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Render Health Check Route
