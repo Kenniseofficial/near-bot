@@ -56,7 +56,6 @@ client.on('messageCreate', async (message) => {
         await message.reply({ embeds: [embed], components: [row] });
     }
 });
-
 // 1. Put the ready listener FIRST so it's armed and ready to catch the event
 client.once('ready', () => {
   console.log(`=============================================`);
@@ -73,7 +72,7 @@ client.login(process.env.DISCORD_TOKEN);
 
 // --- ENHANCED VERIFY ROUTE ---
 app.post('/verify', async (req, res) => {
-  console.log("Incoming verification payload received:", req.body);// --- DYNAMIC MULTI-SERVER VERIFY ROUTE ---
+  console.log("Incoming verification payload received:", req.body);
   const userId = req.body.userId || req.body.discordId;
   const accountId = req.body.accountId || req.body.walletAddress;
   const hasNft = req.body.hasNft;
