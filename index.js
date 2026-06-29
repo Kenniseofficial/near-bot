@@ -58,39 +58,70 @@ client.on('messageCreate', async (message) => {
 });
 
 client.login(process.env.DISCORD_TOKEN);
+// --- STARTUP LOG: Shows how many servers the bot is connected to ---
+client.once('ready', () => {
+  console.log(`=============================================`);
+  console.log(`🌲 ${client.user.tag} is live and tracking!`);
+  console.log(`📊 Connected to: ${client.guilds.cache.size} server(s)`);
+  client.guilds.cache.forEach(guild => {
+    console.log(`   • ${guild.name} (ID: ${guild.id})`);
+  });
+  console.log(`=============================================`);
+});
+
+// --- ENHANCED VERIFY ROUTE ---
 app.post('/verify', async (req, res) => {
-  console.log("📨 Incoming verification payload received:", req.body);
+  console.log("Incoming verification payload received:", req.body);
 
   const userId = req.body.userId || req.body.discordId;
   const accountId = req.body.accountId || req.body.walletAddress;
   const hasNft = req.body.hasNft;
 
   if (!userId || !accountId) {
-    console.log("❌ Missing user data in request body.");
     return res.status(400).json({ error: "Missing userId or accountId" });
   }
 
+  // Handle accidental username input instead of a numerical ID
+  if (isNaN(userId)) {
+    console.log(`❌ Validation Failed: '${userId}' is a username, not a valid numeric Discord ID.`);
+    return res.status(400).json({ error: "Please provide your numerical Discord User ID, not your username." });
+  }
+
   if (hasNft === false) {
-    console.log(`📡 Log Ping: User ${userId} is currently checking wallet ${accountId}`);
+    console.log(`📡 Log Ping: User ${userId} is checking wallet ${accountId}`);
     return res.json({ status: "logged" });
   }
 
   try {
-    console.log(`ℹ️ Attempting to assign role to User ID: ${userId}`);
-    
     const guildId = "1265975298130935858"; 
     const roleId = "1265976543163940864";  
 
-    const guild = await client.guilds.fetch(guildId);
-    const member = await guild.members.fetch(userId);
+    // 1. Attempt to fetch the Guild safely
+    let guild;
+    try {
+      guild = await client.guilds.fetch(guildId);
+    } catch (gError) {
+      console.error(`❌ Guild Error: Bot cannot find Guild ID ${guildId}. Ensure the ID is correct and the bot is invited.`);
+      return res.status(500).json({ error: "Bot configurations error: Server not found." });
+    }
+
+    // 2. Check if the user is sitting in the server
+    let member;
+    try {
+      member = await guild.members.fetch(userId);
+    } catch (mError) {
+      console.log(`❌ Membership Check: User ID ${userId} is NOT a member of this server.`);
+      return res.status(404).json({ error: "You must join our Discord server before verifying your wallet!" });
+    }
     
-    console.log(`👤 Target User Tag: ${member.user.tag}`);
+    console.log(`👤 Target User Verified: ${member.user.tag}`);
     console.log(`👑 Is User Server Owner?: ${guild.ownerId === member.id}`);
 
+    // 3. Assign role
     await member.roles.add(roleId);
-
     console.log(`✅ Success! Role assigned to Discord User: ${userId}`);
     return res.json({ success: true });
+
   } catch (error) {
     console.error("❌ Discord Role Assignment failed:", error);
     return res.status(500).json({ error: error.message });
