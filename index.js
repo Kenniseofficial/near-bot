@@ -1,5 +1,18 @@
 const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
+const express = require('express');
 require('dotenv').config();
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Render Health Check Route
+app.get('/', (req, res) => {
+    res.send('ForestNEARian Bot Web Server is Online');
+});
+
+app.listen(PORT, () => {
+    console.log(`📡 Web server listening on port ${PORT}`);
+});
 
 const client = new Client({
     intents: [
@@ -9,7 +22,6 @@ const client = new Client({
     ]
 });
 
-// Use the exact environment link or default to your verified Vercel site
 const VERCEL_URL = process.env.CLIENT_URL || "https://near-verify-web.vercel.app/";
 
 client.once('ready', () => {
@@ -37,5 +49,4 @@ client.on('messageCreate', async (message) => {
     }
 });
 
-// Explicitly use the environment token Render looks for
 client.login(process.env.DISCORD_TOKEN);
