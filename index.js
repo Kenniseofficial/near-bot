@@ -58,3 +58,41 @@ client.on('messageCreate', async (message) => {
 });
 
 client.login(process.env.DISCORD_TOKEN);
+// --- THE MISSING VERIFY ROUTE ---
+app.post('/verify', async (req, res) => {
+  console.log("📨 Incoming verification payload received:", req.body);
+
+  const userId = req.body.userId || req.body.discordId;
+  const accountId = req.body.accountId || req.body.walletAddress;
+  const hasNft = req.body.hasNft;
+
+  if (!userId || !accountId) {
+    console.log("❌ Missing user data in request body.");
+    return res.status(400).json({ error: "Missing userId or accountId" });
+  }
+
+  // Early activity log check
+  if (hasNft === false) {
+    console.log(`📡 Log Ping: User ${userId} is currently checking wallet ${accountId}`);
+    return res.json({ status: "logged" });
+  }
+
+  try {
+    console.log(`ℹ️ Attempting to assign role to User ID: ${userId}`);
+    
+    // Target your specific Discord Server Guild
+    const guildId = "1265975298130935858"; // Replace with your true Server Guild ID if different
+    const roleId = "1265976543163940864";  // Replace with your true Verified Role ID if different
+
+    const guild = await client.guilds.fetch(guildId);
+    const member = await guild.members.fetch(userId);
+    
+    await member.roles.add(roleId);
+
+    console.log(`✅ Success! Role assigned to Discord User: ${userId}`);
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("❌ Discord Role Assignment failed:", error);
+    return res.status(500).json({ error: error.message });
+  }
+});
