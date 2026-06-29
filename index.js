@@ -57,8 +57,7 @@ client.on('messageCreate', async (message) => {
     }
 });
 
-client.login(process.env.DISCORD_TOKEN);
-// --- STARTUP LOG: Shows how many servers the bot is connected to ---
+// 1. Put the ready listener FIRST so it's armed and ready to catch the event
 client.once('ready', () => {
   console.log(`=============================================`);
   console.log(`🌲 ${client.user.tag} is live and tracking!`);
@@ -69,9 +68,14 @@ client.once('ready', () => {
   console.log(`=============================================`);
 });
 
+// 2. Put the login action AFTER the listener is set up
+client.login(process.env.DISCORD_TOKEN);
+
 // --- ENHANCED VERIFY ROUTE ---
 app.post('/verify', async (req, res) => {
-  console.log("Incoming verification payload received:", req.body);
+  console.log("Incoming verification payload received:", req.body);// --- DYNAMIC MULTI-SERVER VERIFY ROUTE ---
+app.post('/verify', async (req, res) => {
+  console.log("📨 Incoming verification payload received:", req.body);
 
   const userId = req.body.userId || req.body.discordId;
   const accountId = req.body.accountId || req.body.walletAddress;
@@ -81,10 +85,9 @@ app.post('/verify', async (req, res) => {
     return res.status(400).json({ error: "Missing userId or accountId" });
   }
 
-  // Handle accidental username input instead of a numerical ID
   if (isNaN(userId)) {
-    console.log(`❌ Validation Failed: '${userId}' is a username, not a valid numeric Discord ID.`);
-    return res.status(400).json({ error: "Please provide your numerical Discord User ID, not your username." });
+    console.log(`❌ Validation Failed: '${userId}' is a username, not a numeric ID.`);
+    return res.status(400).json({ error: "Please provide your numerical Discord User ID." });
   }
 
   if (hasNft === false) {
@@ -92,38 +95,53 @@ app.post('/verify', async (req, res) => {
     return res.json({ status: "logged" });
   }
 
+  // Common role name to search for across all servers
+  const TARGET_ROLE_NAME = "ForestNEARian"; 
+
   try {
-    const guildId = "1265975298130935858"; 
-    const roleId = "1265976543163940864";  
+    let targetGuild = null;
+    let targetMember = null;
 
-    // 1. Attempt to fetch the Guild safely
-    let guild;
-    try {
-      guild = await client.guilds.fetch(guildId);
-    } catch (gError) {
-      console.error(`❌ Guild Error: Bot cannot find Guild ID ${guildId}. Ensure the ID is correct and the bot is invited.`);
-      return res.status(500).json({ error: "Bot configurations error: Server not found." });
+    // Get all servers the bot is currently in
+    const connectedGuilds = client.guilds.cache.values();
+
+    // Loop through servers to find where this user is sitting
+    for (const guild of connectedGuilds) {
+      try {
+        const member = await guild.members.fetch(userId);
+        if (member) {
+          targetGuild = guild;
+          targetMember = member;
+          console.log(`🔍 Found user inside server: ${guild.name} (ID: ${guild.id})`);
+          break; // Stop looking once we find the matching server membership
+        }
+      } catch (err) {
+        // User isn't in this server, continue checking the next one
+        continue;
+      }
     }
 
-    // 2. Check if the user is sitting in the server
-    let member;
-    try {
-      member = await guild.members.fetch(userId);
-    } catch (mError) {
-      console.log(`❌ Membership Check: User ID ${userId} is NOT a member of this server.`);
-      return res.status(404).json({ error: "You must join our Discord server before verifying your wallet!" });
+    // If we scanned all servers and didn't find the user
+    if (!targetGuild || !targetMember) {
+      console.log(`❌ Membership Check: User ID ${userId} is not found in any server the bot is in.`);
+      return res.status(404).json({ error: "You must join the Discord server before verifying!" });
     }
-    
-    console.log(`👤 Target User Verified: ${member.user.tag}`);
-    console.log(`👑 Is User Server Owner?: ${guild.ownerId === member.id}`);
 
-    // 3. Assign role
-    await member.roles.add(roleId);
-    console.log(`✅ Success! Role assigned to Discord User: ${userId}`);
+    // Find the role dynamically by its name inside that specific server
+    const role = targetGuild.roles.cache.find(r => r.name === TARGET_ROLE_NAME);
+
+    if (!role) {
+      console.log(`❌ Role Error: Could not find a role named '${TARGET_ROLE_NAME}' in ${targetGuild.name}.`);
+      return res.status(404).json({ error: `The server needs a role named exactly '${TARGET_ROLE_NAME}'.` });
+    }
+
+    // Assign the found role
+    await targetMember.roles.add(role);
+    console.log(`✅ Success! '${TARGET_ROLE_NAME}' role assigned to ${targetMember.user.tag} in ${targetGuild.name}`);
     return res.json({ success: true });
 
   } catch (error) {
-    console.error("❌ Discord Role Assignment failed:", error);
+    console.error("❌ Discord Dynamic Role Assignment failed:", error);
     return res.status(500).json({ error: error.message });
   }
 });
