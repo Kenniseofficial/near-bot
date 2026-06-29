@@ -1,7 +1,18 @@
 const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 const express = require('express');
 require('dotenv').config();
+const express = require('express');
+const cors = require('cors'); // Make sure this is imported at the top
+const app = express();
 
+// Paste this exact block right here:
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST'],
+  allowedHeaders: ['Content-Type']
+}));
+
+app.use(express.json());
 const app = express();
 const PORT = process.env.PORT || 3000;
 
