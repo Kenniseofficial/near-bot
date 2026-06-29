@@ -80,19 +80,19 @@ app.post('/verify', async (req, res) => {
   try {
     console.log(`ℹ️ Attempting to assign role to User ID: ${userId}`);
     
-    // Target your specific Discord Server Guild
-    const guildId = "1265975298130935858"; // Replace with your true Server Guild ID if different
-    const roleId = "1265976543163940864";  // Replace with your true Verified Role ID if different
+    const guildId = "1265975298130935858"; 
+    const roleId = "1265976543163940864";  
 
     const guild = await client.guilds.fetch(guildId);
     const member = await guild.members.fetch(userId);
     
+    console.log(`👤 Target User Tag: ${member.user.tag}`);
+    console.log(`👑 Is User Server Owner?: ${guild.ownerId === member.id}`);
+    console.log(`🛡️ Bot Highest Role Position: ${guild.members.me.roles.highest.position}`);
+    console.log(`🏷️ Target Role Position: ${guild.roles.cache.get(roleId)?.position}`);
+
     await member.roles.add(roleId);
 
     console.log(`✅ Success! Role assigned to Discord User: ${userId}`);
     return res.json({ success: true });
-  } catch (error) {
-    console.error("❌ Discord Role Assignment failed:", error);
-    return res.status(500).json({ error: error.message });
   }
-});
