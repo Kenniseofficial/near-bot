@@ -40,7 +40,7 @@ client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
 
     if (message.content === '!setup') {
-console.log(`📑 dropped verification card in server: ${message.guild?.name || 'Unknown Server'});
+console.log(`📑 dropped verification card in server: ${message.guild?.name || 'Unknown Server'}`);
         const embed = new EmbedBuilder()
             .setColor('#0099ff')
             .setTitle('🔐 NFT Wallet Verification')
