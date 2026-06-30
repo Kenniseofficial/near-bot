@@ -59,13 +59,13 @@ console.log(`📑 dropped verification card in server: ${message.guild?.name || 
 });
 // 1. Put the ready listener FIRST so it's armed and ready to catch the event
 client.once('ready', () => {
-  console.log(`=============================================`);
+  console.log(`=======`);
   console.log(`🌲 ${client.user.tag} is live and tracking!`);
   console.log(`📊 Connected to: ${client.guilds.cache.size} server(s)`);
   client.guilds.cache.forEach(guild => {
     console.log(`   • ${guild.name} (ID: ${guild.id})`);
   });
-  console.log(`=============================================`);
+  console.log(`======`);
 });
 
 // 2. Put the login action AFTER the listener is set up
