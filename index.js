@@ -3,6 +3,11 @@ const express = require('express');
 const cors = require('cors'); // Make sure this is imported at the top
 const app = express();
 
+// --- SUPABASE DATABASE CONFIGURATION ---
+const { createClient } = require('@supabase/supabase-js');
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
 // Paste this exact block right here:
 app.use(cors({
   origin: '*',
@@ -69,7 +74,7 @@ client.once('ready', () => {
 // 2. Put the login action AFTER the listener is set up
 client.login(process.env.DISCORD_TOKEN);
 
-// --- ENHANCED VERIFY ROUTE ---
+// --- ENHANCED VERIFY ROUTE WITH SUPABASE ---
 app.post('/verify', async (req, res) => {
   console.log("Incoming verification payload received:", req.body);
   const userId = req.body.userId || req.body.discordId;
@@ -85,22 +90,48 @@ app.post('/verify', async (req, res) => {
     return res.status(400).json({ error: "Please provide your numerical Discord User ID." });
   }
 
-  if (hasNft === false) {
-    console.log(`📡 Log Ping: User ${userId} is checking wallet ${accountId}`);
-    return res.json({ status: "logged" });
-  }
-
-  // Common role name to search for across all servers
-  const TARGET_ROLE_NAME = "ForestNEARian"; 
-
   try {
+    // 1. Check Supabase to see if this Discord ID or NEAR Wallet already exists
+    const { data: existingRecords, error: fetchError } = await supabase
+      .from('verifications')
+      .select('user_id, account_id')
+      .or(`user_id.eq.${userId},account_id.eq.${accountId}`);
+
+    if (fetchError) {
+      console.error("Supabase fetch error:", fetchError);
+      return res.status(500).json({ error: "Database verification check failed." });
+    }
+
+    if (existingRecords && existingRecords.length > 0) {
+      const matchedId = existingRecords.some(r => r.user_id === String(userId));
+      const matchedWallet = existingRecords.some(r => r.account_id === String(accountId));
+
+      if (matchedId && matchedWallet) {
+        console.log(`❌ Blocked: Credentials verified already (User: ${userId}, Wallet: ${accountId})`);
+        return res.status(400).json({ error: "credentials verified already" });
+      }
+      if (matchedId) {
+        console.log(`❌ Blocked: ID verified already (User: ${userId})`);
+        return res.status(400).json({ error: "ID verified already" });
+      }
+      if (matchedWallet) {
+        console.log(`❌ Blocked: Wallet address verified already (Wallet: ${accountId})`);
+        return res.status(400).json({ error: "wallet address verified already" });
+      }
+    }
+
+    // 2. If the user doesn't own the NFT, stop here but log the check step cleanly
+    if (hasNft === false) {
+      console.log(`📡 Log Ping: User ${userId} is checking wallet ${accountId}`);
+      return res.json({ status: "logged" });
+    }
+
+    const TARGET_ROLE_NAME = "ForestNEARian";
     let targetGuild = null;
     let targetMember = null;
 
-    // Get all servers the bot is currently in
     const connectedGuilds = client.guilds.cache.values();
 
-    // Loop through servers to find where this user is sitting
     for (const guild of connectedGuilds) {
       try {
         const member = await guild.members.fetch(userId);
@@ -108,31 +139,39 @@ app.post('/verify', async (req, res) => {
           targetGuild = guild;
           targetMember = member;
           console.log(`🔍 Found user inside server: ${guild.name} (ID: ${guild.id})`);
-          break; // Stop looking once we find the matching server membership
+          break;
         }
       } catch (err) {
-        // User isn't in this server, continue checking the next one
         continue;
       }
     }
 
-    // If we scanned all servers and didn't find the user
     if (!targetGuild || !targetMember) {
-      console.log(`❌ Membership Check: User ID ${userId} is not found in any server the bot is in.`);
+      console.log(`❌ Membership Check: User ID ${userId} is not found in any server.`);
       return res.status(404).json({ error: "You must join the Discord server before verifying!" });
     }
 
-    // Find the role dynamically by its name inside that specific server
     const role = targetGuild.roles.cache.find(r => r.name === TARGET_ROLE_NAME);
 
     if (!role) {
-      console.log(`❌ Role Error: Could not find a role named '${TARGET_ROLE_NAME}' in ${targetGuild.name}.`);
-      return res.status(404).json({ error: `The server needs a role named exactly '${TARGET_ROLE_NAME}'.` });
+      console.log(`❌ Role Error: Could not find a role named '${TARGET_ROLE_NAME}'`);
+      return res.status(404).json({ error: `The server needs a role named exactly '${TARGET_ROLE_NAME}'` });
     }
 
-    // Assign the found role
+    // 3. Assign the Discord Role
     await targetMember.roles.add(role);
-    console.log(`✅ Success! '${TARGET_ROLE_NAME}' role assigned to ${targetMember.user.tag} in ${targetGuild.name}`);
+    console.log(`✅ Success! '${TARGET_ROLE_NAME}' role assigned to ${targetMember.user.tag}`);
+
+    // 4. Save to Supabase to permanently prevent reusing these credentials
+    const { error: insertError } = await supabase
+      .from('verifications')
+      .insert([{ user_id: String(userId), account_id: String(accountId) }]);
+
+    if (insertError) {
+      console.error("Supabase storage saving error:", insertError);
+      // We don't crash here since the role was successfully assigned, but we log it.
+    }
+
     return res.json({ success: true });
 
   } catch (error) {
