@@ -1,6 +1,7 @@
 const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 const express = require('express');
 const cors = require('cors'); // Make sure this is imported at the top
+const cron = require('node-cron');
 const app = express();
 
 // --- SUPABASE DATABASE CONFIGURATION ---
@@ -73,7 +74,114 @@ client.once('ready', () => {
 
 // 2. Put the login action AFTER the listener is set up
 client.login(process.env.DISCORD_TOKEN);
+// --- AUTOMATED HOLDINGS VALIDATION ENGINE ---
+async function scanAndSyncNftHolders() {
+  console.log("🔄 Starting scheduled 5-minute audit of NFT holders...");
 
+  try {
+    const { data: verifiedUsers, error } = await supabase
+      .from('verifications')
+      .select('user_id, account_id');
+
+    if (error) {
+      console.error("❌ Failed to fetch records from Supabase during scan:", error);
+      return;
+    }
+
+    if (!verifiedUsers || verifiedUsers.length === 0) {
+      console.log("ℹ️ No verified users found in the database to audit.");
+      return;
+    }
+
+    console.log(`📡 Auditing ${verifiedUsers.length} active records sequentially...`);
+
+    for (const user of verifiedUsers) {
+      const discordId = user.user_id;
+      const walletAddress = user.account_id;
+
+      try {
+        const argsBase64 = Buffer.from(JSON.stringify({ account_id: walletAddress })).toString('base64');
+
+        const rpcResponse = await fetch('https://rpc.mainnet.near.org', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 'dontcare',
+            method: 'query',
+            params: {
+              request_type: 'call_function',
+              finality: 'final',
+              account_id: 'ofp_collection.nfts.tg',
+              method_name: 'nft_supply_for_owner',
+              args_base64: argsBase64
+            }
+          })
+        });
+
+        const rpcData = await rpcResponse.json();
+        let count = 0;
+
+        if (rpcData.result && rpcData.result.result) {
+          const bytesToText = String.fromCharCode(...rpcData.result.result);
+          const balanceString = bytesToText.replace(/['"]+/g, '');
+          count = parseInt(balanceString, 10);
+        }
+
+        if (isNaN(count) || count === 0) {
+          console.log(`⚠️ Liquidation Detected: User ${discordId} (${walletAddress}) holds 0 NFTs.`);
+
+          for (const guild of client.guilds.cache.values()) {
+            try {
+              const member = await guild.members.fetch(discordId).catch(() => null);
+              if (member) {
+                const TARGET_ROLE_NAME = "ForestNEARian";
+                const role = guild.roles.cache.find(r => r.name === TARGET_ROLE_NAME);
+                const targetChannel = guild.systemChannel || guild.channels.cache.find(c => c.type === 0 && c.permissionsFor(guild.members.me).has('SendMessages'));
+
+                if (role && member.roles.cache.has(role.id)) {
+                  await member.roles.remove(role);
+                  console.log(`🛡️ Stripped role from ${member.user.tag}`);
+                }
+
+                await member.kick("Automated Security Sync: NFT holdings sold/transferred.");
+                console.log(`🚪 Kicked user ${member.user.tag} from server.`);
+
+                if (targetChannel) {
+                  const alertEmbed = new EmbedBuilder()
+                    .setColor('#ff3333')
+                    .setTitle('🛡️ Security System: Access Revoked')
+                    .setDescription(`**User:** <@${discordId}>\n**Wallet:** \`${walletAddress}\`\n\nThis user has been removed from the server because they sold or transferred their **ForestNEARian** NFT holdings.`)
+                    .setTimestamp();
+
+                  await targetChannel.send({ embeds: [alertEmbed] }).catch(err => console.error(err));
+                }
+              }
+            } catch (guildErr) {
+              continue;
+            }
+          }
+
+          await supabase
+            .from('verifications')
+            .delete()
+            .eq('user_id', discordId);
+          console.log(`🧹 Cleaned up validation table entry for user ${discordId}.`);
+        }
+      } catch (chainError) {
+        console.error(`❌ RPC connection failure checking wallet ${walletAddress}:`, chainError);
+      }
+    }
+    console.log("✅ Scheduled automated security scan completed cleanly.");
+  } catch (globalError) {
+    console.error("❌ Critical error running holder verification loop:", globalError);
+  }
+}
+
+// --- INITIALIZE INTERVAL (RUNS ONCE EVERY 5 MINUTES) ---
+cron.schedule('*/5 * * * *', () => {
+  scanAndSyncNftHolders();
+});
 // --- ENHANCED VERIFY ROUTE WITH SUPABASE ---
 app.post('/verify', async (req, res) => {
   console.log("Incoming verification payload received:", req.body);
